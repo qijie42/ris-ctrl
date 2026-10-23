@@ -12,7 +12,11 @@ from rclpy.node import Node
 
 
 class EgoPositionCommandBridge(Node):
-    """Adapt Ego-Planner's ENU position command to the PX4 bridge interface."""
+    """
+    Adapt Ego-Planner's position command to the PX4 bridge interface.
+    
+    NO coordinate transformation - assumes input and output use the same frame.
+    """
 
     def __init__(self) -> None:
         super().__init__("ego_position_command_bridge")
@@ -23,9 +27,11 @@ class EgoPositionCommandBridge(Node):
         self.declare_parameter("expected_frame", "world")
         self.declare_parameter("max_command_age_s", 0.3)
         self.declare_parameter("future_tolerance_s", 0.05)
+
         self.expected_frame = str(self.get_parameter("expected_frame").value)
         self.max_command_age_s = float(self.get_parameter("max_command_age_s").value)
         self.future_tolerance_s = float(self.get_parameter("future_tolerance_s").value)
+
         if (not math.isfinite(self.max_command_age_s) or self.max_command_age_s <= 0
                 or not math.isfinite(self.future_tolerance_s)
                 or self.future_tolerance_s < 0):
@@ -43,8 +49,10 @@ class EgoPositionCommandBridge(Node):
             PositionCommand, input_topic, self._on_position_command, 1
         )
         self.get_logger().info(
-            f"Forwarding Ego-Planner commands: {input_topic} -> {output_topic}"
+            f"Forwarding Ego-Planner commands (NO coordinate transform): {input_topic} -> {output_topic}"
         )
+
+        self._msg_count = 0
 
     @staticmethod
     def _finite(value: float, name: str) -> float:
@@ -60,11 +68,24 @@ class EgoPositionCommandBridge(Node):
         try:
             if command.header.frame_id != self.expected_frame:
                 raise ValueError(f"expected frame {self.expected_frame!r}")
+
             stamp_ns = (command.header.stamp.sec * 1_000_000_000
                         + command.header.stamp.nanosec)
             age_s = (self.get_clock().now().nanoseconds - stamp_ns) / 1e9
             if stamp_ns <= 0 or not -self.future_tolerance_s <= age_s <= self.max_command_age_s:
                 raise ValueError(f"stale or invalid command timestamp (age={age_s:.3f}s)")
+
+            # Log first few messages for debugging
+            if self._msg_count < 3:
+                self.get_logger().info(
+                    f"Command #{self._msg_count}: "
+                    f"pos=({command.position.x:.2f},{command.position.y:.2f},{command.position.z:.2f}), "
+                    f"vel=({command.velocity.x:.2f},{command.velocity.y:.2f},{command.velocity.z:.2f}), "
+                    f"yaw={command.yaw:.2f}"
+                )
+                self._msg_count += 1
+
+            # Build RealtimeControl message - direct passthrough, no coordinate transform
             msg = RealtimeControl()
             msg.enable = True
             msg.has_command = True
@@ -74,6 +95,7 @@ class EgoPositionCommandBridge(Node):
             msg.use_attitude = False
             msg.use_jerk = False
             msg.use_yaw_rate = True
+
             msg.x = self._finite(command.position.x, "position.x")
             msg.y = self._finite(command.position.y, "position.y")
             msg.z = self._finite(command.position.z, "position.z")
@@ -86,6 +108,7 @@ class EgoPositionCommandBridge(Node):
             msg.yaw = self._finite(command.yaw, "yaw")
             msg.yaw_rate = self._finite(command.yaw_dot, "yaw_dot")
             msg.timestamp_ms = int(time.time() * 1000)
+
         except ValueError as exc:
             self.get_logger().warning(
                 f"Ignoring invalid PositionCommand: {exc}", throttle_duration_sec=2.0
