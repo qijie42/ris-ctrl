@@ -23,6 +23,7 @@ setup(
         "console_scripts": [
             "bridge = px4_bridge.main:main",
             "odom_bridge = px4_bridge.main:odom_bridge_main",
+            "ego_position_command_bridge = px4_bridge.ego_position_command_bridge:main",
         ],
     },
 )

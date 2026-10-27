@@ -10,4 +10,6 @@
 **.zip
 **.ply
 **/__pycache__
-**/*.pyc
+**/*.pycbuild/
+install/
+log/

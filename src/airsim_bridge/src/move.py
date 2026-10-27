@@ -3,7 +3,7 @@ import airsim
 import sys
 import time
 
-client = airsim.MultirotorClient("192.168.138.1")
+client = airsim.MultirotorClient("127.0.0.1")
 client.confirmConnection()
 client.enableApiControl(True)
 client.armDisarm(True)
@@ -17,7 +17,7 @@ z = -7
 
 # Fly given velocity vector for 5 seconds
 duration = 5
-speed = 1
+speed = 3
 delay = duration * speed
 
 # using airsim.DrivetrainType.MaxDegreeOfFreedom means we can control the drone yaw independently
